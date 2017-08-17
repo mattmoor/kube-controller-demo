@@ -20,8 +20,20 @@ go_library(
     ],
 )
 
-go_binary(
+load("@io_bazel_rules_docker//docker/contrib/go:image.bzl", "go_image")
+
+go_image(
     name = "reboot-controller",
     library = ":go_default_library",
     visibility = ["//visibility:public"],
+)
+
+load("@k8s_deploy//:defaults.bzl", "k8s_deploy")
+
+k8s_deploy(
+   name = "deploy",
+   template = ":deployment.yaml",
+   images = {
+       "gcr.io/convoy-adapter/reboot-controller:latest": ":reboot-controller",
+   }
 )

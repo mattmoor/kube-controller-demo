@@ -4,13 +4,13 @@ metadata:
   name: reboot-agent
 spec:
   template:
+    metadata:
+      labels:
+        name: reboot-agent
     spec:
       containers:
       - name: reboot-agent
-        image: TBD
-        command:
-        - ./reboot-agent --v=4
-        - --v=4
+        image: gcr.io/convoy-adapter/reboot-agent:latest
         env:
           - name: NODE_NAME
             valueFrom:

@@ -53,7 +53,7 @@ func main() {
 	// Open a dbus connection for triggering a system reboot
 	dbusConn, err := login1.New()
 	if err != nil {
-		glog.Fatalf("Failed to create dbus connection")
+		glog.Fatalf("Failed to create dbus connection: %v", err)
 	}
 
 	agent := newRebootAgent(nodeName, client, dbusConn)

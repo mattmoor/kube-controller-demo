@@ -19,8 +19,20 @@ go_library(
     ],
 )
 
-go_binary(
+load("@io_bazel_rules_docker//docker/contrib/go:image.bzl", "go_image")
+
+go_image(
     name = "reboot-agent",
     library = ":go_default_library",
     visibility = ["//visibility:public"],
+)
+
+load("@k8s_daemonset//:defaults.bzl", "k8s_daemonset")
+
+k8s_daemonset(
+   name = "deploy",
+   template = ":daemonset.yaml",
+   images = {
+       "gcr.io/convoy-adapter/reboot-agent:latest": ":reboot-agent",
+   }
 )

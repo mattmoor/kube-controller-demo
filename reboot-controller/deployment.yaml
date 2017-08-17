@@ -1,0 +1,14 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: reboot-controller
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: reboot-controller
+    spec:
+      containers:
+      - name: reboot-controller
+        image: gcr.io/convoy-adapter/reboot-controller:latest
