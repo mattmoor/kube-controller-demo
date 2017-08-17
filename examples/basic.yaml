@@ -1,0 +1,7 @@
+apiVersion: "gcr.io/v1"
+kind: Package
+metadata:
+  name: my-new-package
+spec:
+  name: Hello
+  version: Custom Resources

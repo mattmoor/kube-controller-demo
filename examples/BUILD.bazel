@@ -1,0 +1,6 @@
+load("@k8s_package//:defaults.bzl", "k8s_package")
+
+k8s_package(
+    name = "examples",
+    template = ":basic.yaml",
+)

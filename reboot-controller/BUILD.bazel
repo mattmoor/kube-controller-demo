@@ -5,16 +5,15 @@ go_library(
     srcs = ["main.go"],
     visibility = ["//visibility:private"],
     deps = [
+        "//apis/cr/v1:go_default_library",
         "//common:go_default_library",
         "//vendor/github.com/golang/glog:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/labels:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/fields:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
         "//vendor/k8s.io/apimachinery/pkg/util/wait:go_default_library",
-        "//vendor/k8s.io/apimachinery/pkg/watch:go_default_library",
-        "//vendor/k8s.io/client-go/kubernetes:go_default_library",
-        "//vendor/k8s.io/client-go/listers/core/v1:go_default_library",
         "//vendor/k8s.io/client-go/pkg/api/v1:go_default_library",
+        "//vendor/k8s.io/client-go/rest:go_default_library",
         "//vendor/k8s.io/client-go/tools/cache:go_default_library",
         "//vendor/k8s.io/client-go/util/workqueue:go_default_library",
     ],
@@ -28,12 +27,19 @@ go_image(
     visibility = ["//visibility:public"],
 )
 
+load("@k8s_crd//:defaults.bzl", "k8s_crd")
+
+k8s_crd(
+    name = "crd",
+    template = ":package.yaml",
+)
+
 load("@k8s_deploy//:defaults.bzl", "k8s_deploy")
 
 k8s_deploy(
-   name = "deploy",
-   template = ":deployment.yaml",
-   images = {
-       "gcr.io/convoy-adapter/reboot-controller:latest": ":reboot-controller",
-   }
+    name = "deploy",
+    images = {
+        "gcr.io/convoy-adapter/reboot-controller:latest": ":reboot-controller",
+    },
+    template = ":deployment.yaml",
 )

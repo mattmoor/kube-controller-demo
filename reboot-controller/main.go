@@ -3,24 +3,49 @@ package main
 import (
 	"flag"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/aaronlevy/kube-controller-demo/common"
+	crv1 "github.com/aaronlevy/kube-controller-demo/apis/cr/v1"
 	"github.com/golang/glog"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
+	// meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	// "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
-	lister_v1 "k8s.io/client-go/listers/core/v1"
+	// "k8s.io/apimachinery/pkg/watch"
+	// "k8s.io/client-go/kubernetes"
+	// lister_v1 "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 )
 
 // TODO(aaron): make configurable and add MinAvailable
 const maxUnavailable = 1
+
+func NewClient(cfg *rest.Config) (*rest.RESTClient, *runtime.Scheme, error) {
+	scheme := runtime.NewScheme()
+	if err := crv1.AddToScheme(scheme); err != nil {
+		return nil, nil, err
+	}
+
+	config := *cfg
+	config.GroupVersion = &crv1.SchemeGroupVersion
+	config.APIPath = "/apis"
+	config.ContentType = runtime.ContentTypeJSON
+	config.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: serializer.NewCodecFactory(scheme)}
+
+	client, err := rest.RESTClientFor(&config)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return client, scheme, nil
+}
 
 func main() {
 	// When running as a pod in-cluster, a kubeconfig is not needed. Instead this will make use of the service account injected into the pod.
@@ -39,7 +64,7 @@ func main() {
 	}
 
 	// Construct the Kubernetes client
-	client, err := kubernetes.NewForConfig(config)
+	client, _, err := NewClient(config)
 	if err != nil {
 		glog.Fatalf("Failed to create kubernetes client: %v", err)
 	}
@@ -47,36 +72,29 @@ func main() {
 	stopCh := make(chan struct{})
 	defer close(stopCh)
 
-	newRebootController(client).Run(stopCh)
+	newPackageController(client).Run(stopCh)
 }
 
-type rebootController struct {
-	client     kubernetes.Interface
-	nodeLister lister_v1.NodeLister
+type packageController struct {
+	client     *rest.RESTClient
 	informer   cache.Controller
 	queue      workqueue.RateLimitingInterface
 }
 
-func newRebootController(client kubernetes.Interface) *rebootController {
-	rc := &rebootController{
+func newPackageController(client *rest.RESTClient) *packageController {
+	rc := &packageController{
 		client: client,
 		queue:  workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
 	}
 
-	indexer, informer := cache.NewIndexerInformer(
-		&cache.ListWatch{
-			ListFunc: func(lo meta_v1.ListOptions) (runtime.Object, error) {
-				// We do not add any selectors because we want to watch all nodes.
-				// This is so we can determine the total count of "unavailable" nodes.
-				// However, this could also be implemented using multiple informers (or better, shared-informers)
-				return client.Core().Nodes().List(lo)
-			},
-			WatchFunc: func(lo meta_v1.ListOptions) (watch.Interface, error) {
-				return client.Core().Nodes().Watch(lo)
-			},
-		},
+	_, informer := cache.NewInformer(
+		cache.NewListWatchFromClient(
+			client,
+			crv1.PackageResourcePlural,
+			v1.NamespaceAll,
+			fields.Everything()),
 		// The types of objects this informer will return
-		&v1.Node{},
+		&crv1.Package{},
 		// The resync period of this object. This will force a re-queue of all cached objects at this interval.
 		// Every object will trigger the `Updatefunc` even if there have been no actual updates triggered.
 		// In some cases you can set this to a very high interval - as you can assume you will see periodic updates in normal operation.
@@ -85,34 +103,30 @@ func newRebootController(client kubernetes.Interface) *rebootController {
 		// Callback Functions to trigger on add/update/delete
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				if key, err := cache.MetaNamespaceKeyFunc(obj); err == nil {
-					rc.queue.Add(key)
-				}
+				// rc.queue.Add(obj)
+				glog.Infof("Add: %v", obj)
 			},
 			UpdateFunc: func(old, new interface{}) {
-				if key, err := cache.MetaNamespaceKeyFunc(new); err == nil {
-					rc.queue.Add(key)
+				// rc.queue.Add(new)
+				if !reflect.DeepEqual(old, new) {
+					glog.Infof("Update before: %v, after: %v", old, new)
 				}
 			},
 			DeleteFunc: func(obj interface{}) {
-				if key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj); err == nil {
-					rc.queue.Add(key)
-				}
+				// rc.queue.Add(obj)
+				glog.Infof("Delete: %v", obj)
 			},
 		},
-		cache.Indexers{},
 	)
 
 	rc.informer = informer
-	// NodeLister avoids some boilerplate code (e.g. convert runtime.Object to *v1.node)
-	rc.nodeLister = lister_v1.NewNodeLister(indexer)
 
 	return rc
 }
 
-func (c *rebootController) Run(stopCh chan struct{}) {
+func (c *packageController) Run(stopCh chan struct{}) {
 	defer c.queue.ShutDown()
-	glog.Info("Starting RebootController")
+	glog.Info("Starting Package Controller")
 
 	go c.informer.Run(stopCh)
 
@@ -126,15 +140,15 @@ func (c *rebootController) Run(stopCh chan struct{}) {
 	go wait.Until(c.runWorker, time.Second, stopCh)
 
 	<-stopCh
-	glog.Info("Stopping Reboot Controller")
+	glog.Info("Stopping Package Controller")
 }
 
-func (c *rebootController) runWorker() {
+func (c *packageController) runWorker() {
 	for c.processNext() {
 	}
 }
 
-func (c *rebootController) processNext() bool {
+func (c *packageController) processNext() bool {
 	// Wait until there is a new item in the working queue
 	key, quit := c.queue.Get()
 	if quit {
@@ -145,53 +159,18 @@ func (c *rebootController) processNext() bool {
 	// parallel.
 	defer c.queue.Done(key)
 	// Invoke the method containing the business logic
-	err := c.process(key.(string))
+	err := c.process(key.(*v1.Pod))
 	// Handle the error if something went wrong during the execution of the business logic
 	c.handleErr(err, key)
 	return true
 }
 
-func (c *rebootController) process(key string) error {
-	node, err := c.nodeLister.Get(key)
-	if err != nil {
-		return fmt.Errorf("failed to retrieve node by key %q: %v", key, err)
-	}
-
-	glog.V(4).Infof("Received update of node: %s", node.GetName())
-	if node.Annotations == nil {
-		return nil // If node has no annotations, then it doesn't need a reboot
-	}
-
-	if _, ok := node.Annotations[common.RebootNeededAnnotation]; !ok {
-		return nil // Node does not need reboot
-	}
-
-	// Determine if we should reboot based on maximum number of unavailable nodes
-	unavailable, err := c.unavailableNodeCount()
-	if err != nil {
-		return fmt.Errorf("Failed to determine number of unavailable nodes: %v", err)
-	}
-
-	if unavailable >= maxUnavailable {
-		// TODO(aaron): We might want this case to retry indefinitely. Could create a specific error an check in handleErr()
-		return fmt.Errorf("Too many nodes unvailable (%d/%d). Skipping reboot of %s", unavailable, maxUnavailable, node.Name)
-	}
-
-	// We should not modify the cache object directly, so we make a copy first
-	nodeCopy, err := common.CopyObjToNode(node)
-	if err != nil {
-		return fmt.Errorf("Failed to make copy of node: %v", err)
-	}
-
-	glog.Infof("Marking node %s for reboot", node.Name)
-	nodeCopy.Annotations[common.RebootAnnotation] = ""
-	if _, err := c.client.Core().Nodes().Update(nodeCopy); err != nil {
-		return fmt.Errorf("Failed to set %s annotation: %v", common.RebootAnnotation, err)
-	}
+func (c *packageController) process(pod *v1.Pod) error {
+	glog.Infof("Received update of pod: %s", pod.GetName())
 	return nil
 }
 
-func (c *rebootController) handleErr(err error, key interface{}) {
+func (c *packageController) handleErr(err error, key interface{}) {
 	if err == nil {
 		// Forget about the #AddRateLimited history of the key on every successful synchronization.
 		// This ensures that future processing of updates for this key is not delayed because of
@@ -202,7 +181,7 @@ func (c *rebootController) handleErr(err error, key interface{}) {
 
 	// This controller retries 5 times if something goes wrong. After that, it stops trying.
 	if c.queue.NumRequeues(key) < 5 {
-		glog.Infof("Error processing node %v: %v", key, err)
+		glog.Infof("Error processing pod %v: %v", key, err)
 
 		// Re-enqueue the key rate limited. Based on the rate limiter on the
 		// queue and the re-enqueue history, the key will be processed later again.
@@ -211,38 +190,5 @@ func (c *rebootController) handleErr(err error, key interface{}) {
 	}
 
 	c.queue.Forget(key)
-	glog.Errorf("Dropping node %q out of the queue: %v", key, err)
-}
-
-func (c *rebootController) unavailableNodeCount() (int, error) {
-	nodes, err := c.nodeLister.List(labels.Everything())
-	if err != nil {
-		return 0, err
-	}
-	var unavailable int
-	for _, n := range nodes {
-		if nodeIsRebooting(n) {
-			unavailable++
-			continue
-		}
-		for _, c := range n.Status.Conditions {
-			if c.Type == v1.NodeReady && c.Status == v1.ConditionFalse {
-				unavailable++
-			}
-		}
-	}
-	return unavailable, nil
-}
-
-func nodeIsRebooting(n *v1.Node) bool {
-	// Check if node is marked for reeboot-in-progress
-	if n.Annotations == nil {
-		return false // No annotations - not marked as needing reboot
-	}
-	if _, ok := n.Annotations[common.RebootInProgressAnnotation]; ok {
-		return true
-	}
-	// Check if node is already marked for immediate reboot
-	_, ok := n.Annotations[common.RebootAnnotation]
-	return ok
+	glog.Errorf("Dropping pod %q out of the queue: %v", key, err)
 }

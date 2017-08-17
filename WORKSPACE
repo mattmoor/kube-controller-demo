@@ -36,7 +36,7 @@ _go_image_repos()
 git_repository(
     name = "io_bazel_rules_k8s",
     remote = "https://github.com/mattmoor/rules_k8s",
-    commit = "9976e7360f0feaa11523136416cc1b475dbf62d8",
+    commit = "57d84456f80af89cc76fe43375d184b50f48ca19",
 )
 
 load("@io_bazel_rules_k8s//k8s:k8s.bzl", "k8s_repositories", "k8s_defaults")
@@ -54,7 +54,23 @@ k8s_defaults(
 k8s_defaults(
     # This becomes the name of the @repository and the rule
     # you will import in your BUILD files.
+    name = "k8s_crd",
+    kind = "customresourcedefinition",
+    cluster = "gke_convoy-adapter_us-central1-f_bazel-grpc",
+)
+
+k8s_defaults(
+    # This becomes the name of the @repository and the rule
+    # you will import in your BUILD files.
     name = "k8s_deploy",
     kind = "deployment",
+    cluster = "gke_convoy-adapter_us-central1-f_bazel-grpc",
+)
+
+k8s_defaults(
+    # This becomes the name of the @repository and the rule
+    # you will import in your BUILD files.
+    name = "k8s_package",
+    kind = "package",
     cluster = "gke_convoy-adapter_us-central1-f_bazel-grpc",
 )

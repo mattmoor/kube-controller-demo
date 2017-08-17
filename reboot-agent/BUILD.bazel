@@ -30,9 +30,9 @@ go_image(
 load("@k8s_daemonset//:defaults.bzl", "k8s_daemonset")
 
 k8s_daemonset(
-   name = "deploy",
-   template = ":daemonset.yaml",
-   images = {
-       "gcr.io/convoy-adapter/reboot-agent:latest": ":reboot-agent",
-   }
+    name = "deploy",
+    images = {
+        "gcr.io/convoy-adapter/reboot-agent:latest": ":reboot-agent",
+    },
+    template = ":daemonset.yaml",
 )
