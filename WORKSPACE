@@ -33,9 +33,10 @@ load(
 _go_image_repos()
 
 # Pull in rules_k8s
-local_repository(
+git_repository(
     name = "io_bazel_rules_k8s",
-    path = "/home/mattmoor/rules_k8s",
+    remote = "https://github.com/mattmoor/rules_k8s",
+    commit = "9976e7360f0feaa11523136416cc1b475dbf62d8",
 )
 
 load("@io_bazel_rules_k8s//k8s:k8s.bzl", "k8s_repositories", "k8s_defaults")
