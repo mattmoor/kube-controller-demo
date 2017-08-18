@@ -3,5 +3,7 @@ kind: Package
 metadata:
   name: my-new-package
 spec:
+  # TODO(mattmoor): This should become a URI that supports
+  # label and digest forms that we can publish to a registry.
   name: Hello
   version: Custom Resources
